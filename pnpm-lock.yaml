@@ -41,6 +41,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.38.0
         version: 6.38.0
+      '@hocuspocus/provider':
+        specifier: ^3.2.1
+        version: 3.2.1(y-protocols@1.0.6(yjs@13.6.27))(yjs@13.6.27)
       '@iconify-json/lucide':
         specifier: ^1.2.56
         version: 1.2.57
@@ -678,6 +681,15 @@ packages:
   '@floating-ui/vue@1.1.7':
     resolution: {integrity: sha512-idmAtbAIigGXN2SI5gItiXYBYtNfDTP9yIiObxgu13dgtG7ARCHlNfnR29GxP4LI4o13oiwsJ8wVgghj1lNqcw==}
 
+  '@hocuspocus/common@3.2.1':
+    resolution: {integrity: sha512-I/6lm/DkwshGWMIVRbLfXacvCMqerEcf6+PwszcPKgvvubczi1+95AQaJBbOEwiih+K9fiHeqi8IcVBO/GVMfQ==}
+
+  '@hocuspocus/provider@3.2.1':
+    resolution: {integrity: sha512-LkkXo7hpD8isdeFM6bNF00HPBBaNlMidlipoPHfYjHyAjaZLHPs82b5lyzDHkydhY0QrfWhFQ5m7esdyNS4zmg==}
+    peerDependencies:
+      y-protocols: ^1.0.6
+      yjs: ^13.6.8
+
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
     engines: {node: '>=18.18.0'}
@@ -780,6 +792,9 @@ packages:
 
   '@lezer/lr@1.4.2':
     resolution: {integrity: sha512-pu0K1jCIdnQ12aWNaAVU5bzi7Bd1w54J3ECgANPmYLtQKP0HBj2cE/5coBD66MT10xbtIuUr7tg0Shbsvk0mDA==}
+
+  '@lifeomic/attempt@3.1.0':
+    resolution: {integrity: sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw==}
 
   '@mapbox/node-pre-gyp@2.0.0':
     resolution: {integrity: sha512-llMXd39jtP0HpQLVI37Bf1m2ADlEb35GYSh1SDSLsBhR+5iCxiNGlT31yqbNtVHygHAtMy6dWFERpU2JgufhPg==}
@@ -5541,6 +5556,22 @@ snapshots:
       - '@vue/composition-api'
       - vue
 
+  '@hocuspocus/common@3.2.1':
+    dependencies:
+      lib0: 0.2.114
+
+  '@hocuspocus/provider@3.2.1(y-protocols@1.0.6(yjs@13.6.27))(yjs@13.6.27)':
+    dependencies:
+      '@hocuspocus/common': 3.2.1
+      '@lifeomic/attempt': 3.1.0
+      lib0: 0.2.114
+      ws: 8.18.3
+      y-protocols: 1.0.6(yjs@13.6.27)
+      yjs: 13.6.27
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@humanfs/core@0.19.1': {}
 
   '@humanfs/node@0.16.6':
@@ -5671,6 +5702,8 @@ snapshots:
   '@lezer/lr@1.4.2':
     dependencies:
       '@lezer/common': 1.2.3
+
+  '@lifeomic/attempt@3.1.0': {}
 
   '@mapbox/node-pre-gyp@2.0.0':
     dependencies:

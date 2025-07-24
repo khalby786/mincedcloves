@@ -70,45 +70,69 @@ import { vue } from "@codemirror/lang-vue";
 const language = new Compartment();
 
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
+import { HocuspocusProvider } from "@hocuspocus/provider";
 import { yCollab } from "y-codemirror.next";
 
 const ydoc = new Y.Doc();
-const provider = new WebsocketProvider(
-  "wss://localhost:1234",
-  "mincedcloves-room",
-  ydoc
-);
+const provider = new HocuspocusProvider({
+  url: "ws://localhost:1234",
+  name: "mincedcloves-room",
+  document: ydoc,
+});
+
 interface FileData {
   content: string;
   language: string;
 }
 
 const yFiles = ydoc.getMap<FileData>("files");
-const yFileTexts = ydoc.getMap<Y.Text>("fileTexts");
 
-const files = computed(() =>
-  Array.from(yFiles.entries()).map(([name, data], id) => ({
+// Wait for the provider to sync before accessing data
+const isConnected = ref(false);
+
+provider.on("status", (event: any) => {
+  console.log("Provider status:", event.status);
+  isConnected.value = event.status === "connected";
+});
+
+provider.on("sync", (isSynced: boolean) => {
+  console.log("Provider synced:", isSynced);
+  if (isSynced) {
+    isConnected.value = true;
+    console.log("Files available:", Array.from(yFiles.keys()));
+    console.log("yFiles size:", yFiles.size);
+    
+    // Trigger editor creation if files are ready
+    if (yFiles.size > 0 && editor.value && !view.value) {
+      console.log("Sync event: files ready, creating editor");
+      setTimeout(() => {
+        createEditorForFile(currentFileName.value);
+      }, 50);
+    }
+  }
+});
+
+// Listen for changes to the files map
+yFiles.observe(() => {
+  console.log("yFiles changed, current files:", Array.from(yFiles.keys()));
+  console.log("isConnected.value:", isConnected.value);
+  console.log("yFiles.size:", yFiles.size);
+  console.log("view.value:", view.value);
+  console.log("editor.value:", editor.value);
+});
+
+const files = computed(() => {
+  if (!isConnected.value) return [];
+  return Array.from(yFiles.entries()).map(([name, data], id) => ({
     id,
     name,
     ...(typeof data === "object" && data !== null ? data : {}),
-  }))
-);
-
-const currentFileName = ref("index.html");
+  }));
+});
 
 function getYTextForFile(fileName: string): Y.Text {
-  let yText = yFileTexts.get(fileName);
-  if (!yText) {
-    // If file exists, initialize Y.Text with its content
-    const fileData = yFiles.get(fileName);
-    yText = new Y.Text();
-    if (fileData?.content) {
-      yText.insert(0, fileData.content);
-    }
-    yFileTexts.set(fileName, yText);
-  }
-  return yText;
+  // Always get the Y.Text instance directly from the document
+  return ydoc.getText(fileName);
 }
 
 const openFile = (id: number) => {
@@ -143,9 +167,26 @@ const extensions = [
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   EditorView.theme({
     "&": {
-      fontFamily: "'Hack', monospace",
+      fontFamily: "'Hack', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
       fontSize: "16px",
       height: "100%",
+    },
+    ".cm-gutters": {
+      backgroundColor: "transparent",
+      border: "none",
+      fontFamily: "'Hack', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    },
+    ".cm-lineNumbers .cm-gutterElement": {
+      padding: "0 8px 0 8px",
+      color: "#6b7280",
+      fontFamily: "'Hack', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+    },
+    ".cm-content": {
+      fontFamily: "'Hack', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+      padding: "16px 0",
+    },
+    ".cm-focused": {
+      outline: "none",
     },
   }),
 ];
@@ -159,32 +200,152 @@ function getLanguageExtension(lang: string) {
 }
 
 function createEditorForFile(fileName: string) {
-  const fileData = yFiles.get(fileName);
-  const yTextInst = getYTextForFile(fileName);
-  const langExt = getLanguageExtension(fileData?.language || "javascript");
-  const state = EditorState.create({
-    doc: yTextInst.toString(),
-    extensions: [
-      ...extensions,
-      yCollab(yTextInst, provider.awareness),
-      language.of(langExt),
-    ],
-  });
-  if (view.value) {
-    view.value.destroy();
+  try {
+    console.log("=== createEditorForFile called ===");
+    console.log("fileName:", fileName);
+    console.log("isConnected:", isConnected.value);
+    console.log("editor.value:", editor.value);
+    console.log("view.value:", view.value);
+
+    if (!isConnected.value) {
+      console.log("Not connected yet, waiting...");
+      return;
+    }
+
+    if (!editor.value) {
+      console.log("Editor DOM element not ready yet");
+      return;
+    }
+
+    console.log("Creating editor for file:", fileName);
+    console.log("Available files:", Array.from(yFiles.keys()));
+    console.log("yFiles size:", yFiles.size);
+
+    const fileData = yFiles.get(fileName);
+    if (!fileData) {
+      console.error(`File data not found for: ${fileName}`);
+      console.error("All available files:", Array.from(yFiles.entries()));
+      return;
+    }
+
+    console.log("File data found:", fileData);
+
+    const yTextInst = getYTextForFile(fileName);
+    console.log("Y.Text instance:", yTextInst);
+    console.log("Y.Text content:", yTextInst.toString());
+
+    const langExt = getLanguageExtension(fileData.language || "javascript");
+    console.log("Language extension:", langExt);
+
+    const state = EditorState.create({
+      doc: yTextInst.toString(),
+      extensions: [
+        ...extensions,
+        yCollab(yTextInst, provider.awareness),
+        language.of(langExt),
+      ],
+    });
+
+    console.log("EditorState created:", state);
+
+    if (view.value) {
+      console.log("Destroying existing view");
+      view.value.destroy();
+      view.value = null;
+    }
+
+    console.log("Creating new EditorView");
+    view.value = new EditorView({
+      state,
+      parent: editor.value as Element,
+    });
+
+    console.log("EditorView created successfully:", view.value);
+  } catch (error) {
+    console.error("Error creating editor for file:", fileName, error);
+    if (error instanceof Error) {
+      console.error("Error stack:", error.stack);
+    }
   }
-  view.value = new EditorView({
-    state,
-    parent: editor.value as Element,
-  });
 }
 
+const currentFileName = ref("index.html");
+
 onMounted(() => {
-  createEditorForFile(currentFileName.value);
+  // Wait for connection and files to be available
+  const unwatch = watch(
+    isConnected,
+    (connected) => {
+      console.log("=== isConnected watch triggered ===");
+      console.log("connected:", connected);
+      console.log("yFiles.size:", yFiles.size);
+      console.log("editor.value:", editor.value);
+      
+      if (connected) {
+        // Give a small delay to ensure Y.Map is populated and DOM is ready
+        setTimeout(() => {
+          console.log("Attempting to create editor, yFiles size:", yFiles.size);
+          if (yFiles.size > 0 && editor.value) {
+            console.log("Conditions met, calling createEditorForFile");
+            createEditorForFile(currentFileName.value);
+            unwatch(); // Stop watching once connected and files are available
+          } else {
+            console.log(
+              "No files available yet or DOM not ready, will retry when yFiles changes"
+            );
+            console.log("- yFiles.size > 0:", yFiles.size > 0);
+            console.log("- editor.value exists:", !!editor.value);
+          }
+        }, 200);
+      }
+    },
+    { immediate: true }
+  );
+
+  // Also watch for changes to yFiles in case files arrive after connection
+  yFiles.observe(() => {
+    console.log("=== yFiles.observe triggered ===");
+    console.log("isConnected.value:", isConnected.value);
+    console.log("yFiles.size:", yFiles.size);
+    console.log("view.value:", view.value);
+    console.log("editor.value:", editor.value);
+    
+    // Check if we have files and DOM ready, regardless of connection status
+    // because files arriving means we're effectively connected
+    if (yFiles.size > 0 && !view.value && editor.value) {
+      console.log("Files became available, creating editor (ignoring connection status)");
+      // Update connection status if not already set
+      if (!isConnected.value) {
+        console.log("Setting isConnected to true based on file availability");
+        isConnected.value = true;
+      }
+      // Small delay to ensure DOM is stable
+      setTimeout(() => {
+        createEditorForFile(currentFileName.value);
+      }, 50);
+    } else {
+      console.log("Conditions not met for creating editor:");
+      console.log("- yFiles.size > 0:", yFiles.size > 0);
+      console.log("- !view.value:", !view.value);
+      console.log("- editor.value exists:", !!editor.value);
+    }
+  });
+});
+
+onUnmounted(() => {
+  if (view.value) {
+    view.value.destroy();
+    view.value = null;
+  }
+  if (provider) {
+    provider.destroy();
+  }
 });
 
 watch(currentFileName, (newFile) => {
-  createEditorForFile(newFile);
+  if (isConnected.value) {
+    createEditorForFile(newFile);
+  }
 });
 </script>
 
