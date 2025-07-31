@@ -32,7 +32,14 @@
       </div>
     </div>
   </div>
-  <div class="flex h-[92vh]">
+  <div
+    class="h-[92vh] flex flex-col justify-center content-center items-center w-full align-middle"
+    v-if="!isConnected"
+  >
+    <UProgress size="sm" color="neutral" class="w-1/5" />
+    <p class="h-fit font-bold mt-2 italic opacity-65">Loading</p>
+  </div>
+  <div class="flex h-[92vh]" v-if="isConnected">
     <div class="border-r border-gray-300 w-1/4 bg-white">
       <div class="p-4">
         <h3 class="text-xl font-bold mt-4 mb-4">mincedcloves</h3>
@@ -144,9 +151,11 @@ interface FileData {
 }
 
 const yFiles = ydoc.getMap<FileData>("files");
+const metadata = ydoc.getMap("metadata");
 
-// Wait for the provider to sync before accessing data
 const isConnected = ref(false);
+const isLoading = ref<boolean>(true);
+const previewUrl = ref<string | null>(null);
 
 provider.on("status", (event: any) => {
   console.log(`Provider status [${clientId}]:`, event.status);
@@ -172,13 +181,44 @@ provider.on("status", (event: any) => {
 provider.on("sync", (isSynced: boolean) => {
   console.log(`Provider synced [${clientId}]:`, isSynced);
   if (isSynced) {
-    isConnected.value = true;
+    // Check metadata status and log it
+    const dockerStatus = metadata.get("status");
+    console.log("Docker status from metadata:", dockerStatus);
+    
+    // Set isConnected based on both sync status and docker status
+    if (dockerStatus === true) {
+      isConnected.value = true;
+      console.log(`Connected to Docker!`);
+    }
+
     console.log("Files available:", Array.from(yFiles.keys()));
     console.log("yFiles size:", yFiles.size);
+    console.log("Docker ready?", dockerStatus);
 
     // Always recreate editor after sync to ensure clean state
-    if (yFiles.size > 0 && editor.value) {
+    if (yFiles.size > 0 && editor.value && dockerStatus === true) {
       console.log("Sync event: files ready, creating editor");
+      setTimeout(() => {
+        createEditorForFile(currentFileName.value);
+      }, 50);
+    }
+  }
+});
+
+// Add a metadata observer to watch for status changes
+metadata.observe(() => {
+  console.log("Metadata changed!");
+  console.log(metadata.get("container"))
+  const dockerStatus = metadata.get("status");
+  console.log("New docker status:", dockerStatus);
+  
+  if (dockerStatus === true && !isConnected.value) {
+    console.log("Docker became ready, setting isConnected to true");
+    isConnected.value = true;
+    
+    // Try to create editor if files are available
+    if (yFiles.size > 0 && editor.value && !view.value) {
+      console.log("Creating editor after Docker became ready");
       setTimeout(() => {
         createEditorForFile(currentFileName.value);
       }, 50);
@@ -391,6 +431,7 @@ if (provider.awareness) {
   provider.awareness.on("update", () => {
     const states = Array.from(provider.awareness!.getStates().entries());
     console.log("Raw awareness states:", states);
+    console.log(metadata.get("status"));
 
     // Filter out null, undefined, empty states, and the current client
     const validStates = states.filter(
@@ -526,11 +567,13 @@ onMounted(() => {
       console.log(
         "Files became available, creating editor (ignoring connection status)"
       );
+
       // Update connection status if not already set
       if (!isConnected.value) {
         console.log("Setting isConnected to true based on file availability");
         isConnected.value = true;
       }
+
       // Small delay to ensure DOM is stable
       setTimeout(() => {
         createEditorForFile(currentFileName.value);
