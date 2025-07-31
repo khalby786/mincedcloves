@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev",
+    "dev": "nuxt dev --host",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -27,6 +27,7 @@
     "@iconify-json/lucide": "^1.2.56",
     "@iconify-json/simple-icons": "^1.2.42",
     "@nuxt/ui": "^3.2.0",
+    "firebase": "^12.0.0",
     "i": "^0.3.7",
     "npm": "^11.4.2",
     "nuxt": "^3.17.6",
