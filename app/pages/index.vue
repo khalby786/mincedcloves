@@ -184,7 +184,7 @@ provider.on("sync", (isSynced: boolean) => {
     // Check metadata status and log it
     const dockerStatus = metadata.get("status");
     console.log("Docker status from metadata:", dockerStatus);
-    
+
     // Set isConnected based on both sync status and docker status
     if (dockerStatus === true) {
       isConnected.value = true;
@@ -208,14 +208,16 @@ provider.on("sync", (isSynced: boolean) => {
 // Add a metadata observer to watch for status changes
 metadata.observe(() => {
   console.log("Metadata changed!");
-  console.log(metadata.get("container"))
-  const dockerStatus = metadata.get("status");
+  console.log(metadata.get("container"));
+  const dockerStatus = metadata.get("status") as
+    | { initialized: boolean }
+    | undefined;
   console.log("New docker status:", dockerStatus);
-  
-  if (dockerStatus === true && !isConnected.value) {
+
+  if (dockerStatus?.initialized === true && !isConnected.value) {
     console.log("Docker became ready, setting isConnected to true");
     isConnected.value = true;
-    
+
     // Try to create editor if files are available
     if (yFiles.size > 0 && editor.value && !view.value) {
       console.log("Creating editor after Docker became ready");
@@ -430,8 +432,6 @@ if (typeof window !== "undefined") {
 if (provider.awareness) {
   provider.awareness.on("update", () => {
     const states = Array.from(provider.awareness!.getStates().entries());
-    console.log("Raw awareness states:", states);
-    console.log(metadata.get("status"));
 
     // Filter out null, undefined, empty states, and the current client
     const validStates = states.filter(
@@ -444,19 +444,9 @@ if (provider.awareness) {
           state.userId !== null &&
           state.name !== null;
 
-        console.log(
-          `Client ${clientStateId} (current: ${isCurrentClient}):`,
-          state
-        );
-
         // Exclude current client and invalid states
         return !isCurrentClient && hasValidState;
       }
-    );
-
-    console.log(
-      "Filtered valid states (excluding current client):",
-      validStates
     );
 
     users.value = validStates.map(
@@ -470,8 +460,6 @@ if (provider.awareness) {
         cursor: state.cursor,
       })
     );
-
-    console.log("Updated users list:", users.value);
   });
 
   // Set local awareness state with unique client ID
