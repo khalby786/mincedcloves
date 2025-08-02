@@ -39,32 +39,51 @@
     <UProgress size="sm" color="neutral" class="w-1/5" />
     <p class="h-fit font-bold mt-2 italic opacity-65">Loading</p>
   </div>
-  <div class="flex h-[92vh]" v-if="isConnected">
-    <div class="border-r border-gray-300 w-1/4 bg-white">
-      <div class="p-4">
-        <h3 class="text-xl font-bold mt-4 mb-4">mincedcloves</h3>
-      </div>
-      <!-- file list -->
-      <ul class="mt-8">
-        <li
-          v-for="file in files"
-          :key="file.name"
-          @click="openFile(file.id)"
-          class="text-sm hover:bg-gray-100 cursor-pointer w-full px-4 py-1 font-[Hack]"
-          :class="{
-            'bg-gray-200': currentFileName === file.name,
-          }"
-        >
-          {{ file.name }}
-        </li>
-      </ul>
-    </div>
-    <div
-      id="editor"
-      ref="editor"
-      data-gramm="false"
-      class="editor w-full"
-    ></div>
+  <div class="h-[92vh]" v-if="isConnected">
+    <splitpanes style="height: 100%; width: 100%">
+      <pane size="20">
+        <div class="bg-white">
+          <div class="p-4">
+            <h3 class="text-xl font-bold mt-4 mb-4">mincedcloves</h3>
+          </div>
+          <!-- file list -->
+          <ul class="mt-8">
+            <li
+              v-for="file in files"
+              :key="file.name"
+              @click="openFile(file.id)"
+              class="text-sm hover:bg-gray-100 cursor-pointer w-full px-4 py-1 font-[Hack]"
+              :class="{
+                'bg-gray-200': currentFileName === file.name,
+              }"
+            >
+              {{ file.name }}
+            </li>
+          </ul>
+        </div>
+      </pane>
+      <pane size="40">
+        <div
+          id="editor"
+          ref="editor"
+          data-gramm="false"
+          class="editor w-full h-full"
+        ></div>
+      </pane>
+      <pane size="40">
+        <div class="bg-white h-full overflow-y-auto">
+          <div v-if="previewUrl" class="w-full h-full">
+            <iframe
+              :src="previewUrl"
+              class="w-full h-full border-none"
+              title="Preview"
+              ref="preview"
+            ></iframe>
+          </div>
+          <p v-else class="text-gray-500">No preview available</p>
+        </div>
+      </pane>
+    </splitpanes>
   </div>
 </template>
 
@@ -103,6 +122,13 @@ import {
 
 // Theme
 // import { material } from '@uiw/codemirror-theme-material';
+
+// Panes
+import { Splitpanes, Pane } from "splitpanes";
+import "splitpanes/dist/splitpanes.css";
+
+// Lodash debounce
+import debounce from "lodash.debounce";
 
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
@@ -150,12 +176,38 @@ interface FileData {
   language: string;
 }
 
+let yTextObserver: ((event: Y.YTextEvent) => void) | null = null;
 const yFiles = ydoc.getMap<FileData>("files");
 const metadata = ydoc.getMap("metadata");
 
 const isConnected = ref(false);
-const isLoading = ref<boolean>(true);
 const previewUrl = ref<string | null>(null);
+const preview = useTemplateRef("preview");
+
+function setupPreviewRefreshOnChange(fileName: string) {
+  const yText = getYTextForFile(fileName);
+
+  // Remove previous observer if any
+  if (yTextObserver) {
+    yText.unobserve(yTextObserver);
+  }
+
+  yTextObserver = () => {
+    debouncedRefreshPreview();
+  };
+
+  yText.observe(yTextObserver);
+}
+
+const debouncedRefreshPreview = debounce(() => {
+  if (previewUrl.value) {
+    const oldUrl = previewUrl.value;
+    previewUrl.value = null;
+    setTimeout(() => {
+      previewUrl.value = oldUrl;
+    }, 50);
+  }
+}, 1000);
 
 provider.on("status", (event: any) => {
   console.log(`Provider status [${clientId}]:`, event.status);
@@ -207,16 +259,28 @@ provider.on("sync", (isSynced: boolean) => {
 
 // Add a metadata observer to watch for status changes
 metadata.observe(() => {
-  console.log("Metadata changed!");
-  console.log(metadata.get("container"));
+  const dockerMetadata:
+    | {
+        container: any;
+        port: string;
+        projectPath: string;
+        previewUrl: string;
+      }
+    | undefined = JSON.parse((metadata.get("container") as string) || "{}");
+
   const dockerStatus = metadata.get("status") as
     | { initialized: boolean }
     | undefined;
+
+  console.log("Docker metadata:", dockerMetadata);
   console.log("New docker status:", dockerStatus);
 
   if (dockerStatus?.initialized === true && !isConnected.value) {
     console.log("Docker became ready, setting isConnected to true");
     isConnected.value = true;
+
+    // Set preview URL
+    previewUrl.value = dockerMetadata?.previewUrl || null;
 
     // Try to create editor if files are available
     if (yFiles.size > 0 && editor.value && !view.value) {
@@ -573,6 +637,12 @@ onMounted(() => {
       console.log("- editor.value exists:", !!editor.value);
     }
   });
+
+  if (yTextObserver) {
+    const yText = getYTextForFile(currentFileName.value);
+    yText.unobserve(yTextObserver);
+    yTextObserver = null;
+  }
 });
 
 onUnmounted(() => {
@@ -586,11 +656,18 @@ onUnmounted(() => {
 
   // Perform cleanup
   cleanup();
+
+  if (yTextObserver) {
+    const yText = getYTextForFile(currentFileName.value);
+    yText.unobserve(yTextObserver);
+    yTextObserver = null;
+  }
 });
 
 watch(currentFileName, (newFile) => {
   if (isConnected.value) {
     createEditorForFile(newFile);
+    setupPreviewRefreshOnChange(newFile);
   }
 });
 
@@ -607,4 +684,35 @@ function goToUser(user: any) {
 }
 </script>
 
-<style scoped></style>
+<style>
+.splitpanes__splitter {
+  background-color: #ccc;
+  position: relative;
+}
+.splitpanes__splitter:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: opacity 0.4s;
+  background-color: rgba(0, 0, 255, 0.3);
+  opacity: 0;
+  z-index: 1;
+}
+.splitpanes__splitter:hover:before {
+  opacity: 1;
+}
+.splitpanes__splitter:hover:before {
+  opacity: 1;
+}
+.splitpanes--vertical > .splitpanes__splitter:before {
+  left: -10px;
+  right: -10px;
+  height: 100%;
+}
+.splitpanes--horizontal > .splitpanes__splitter:before {
+  top: -10px;
+  bottom: -10px;
+  width: 100%;
+}
+</style>
